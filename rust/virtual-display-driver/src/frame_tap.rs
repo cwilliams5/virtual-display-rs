@@ -21,7 +21,7 @@
 #![allow(clippy::multiple_unsafe_ops_per_block)]
 
 use core::ffi::c_void;
-use core::sync::atomic::{fence, Ordering};
+use core::sync::atomic::{fence, AtomicBool, Ordering};
 
 use log::{debug, error};
 use windows::{
@@ -78,11 +78,29 @@ pub struct FrameTap {
     disabled: bool,
 }
 
+/// One tap per driver host: with N virtual monitors the driver runs N swap-chain processors, and two
+/// `FrameTap`s interleaving gen-bumps on ONE shmem deliver a flickering mix of both monitors to the
+/// reader. The first processor claims the tap; later ones run as plain virtual displays until it drops
+/// (its monitor is removed).
+static TAP_OWNED: AtomicBool = AtomicBool::new(false);
+
 impl FrameTap {
     /// Create the `Global\VizLabFrame` mapping (NULL-DACL so the user session can open it) and
     /// cache the device's immediate context. Returns `None` on any failure — the driver then
     /// runs as a plain virtual display (the tap is purely additive).
     pub fn new(device: &ID3D11Device) -> Option<Self> {
+        if TAP_OWNED.swap(true, Ordering::SeqCst) {
+            error!("frame_tap: another swap-chain already owns the tap — this monitor will not publish");
+            return None;
+        }
+        let tap = Self::build(device);
+        if tap.is_none() {
+            TAP_OWNED.store(false, Ordering::SeqCst);
+        }
+        tap
+    }
+
+    fn build(device: &ID3D11Device) -> Option<Self> {
         // NULL-DACL security descriptor: grant every session access to the Global\ object.
         let mut sd = SECURITY_DESCRIPTOR::default();
         let psd = PSECURITY_DESCRIPTOR(core::ptr::addr_of_mut!(sd).cast());
@@ -325,5 +343,7 @@ impl Drop for FrameTap {
         if !self.map.is_invalid() {
             unsafe { CloseHandle(self.map) }.ok();
         }
+        // Every constructed FrameTap owns the claim (a failed build released it in new()).
+        TAP_OWNED.store(false, Ordering::SeqCst);
     }
 }
