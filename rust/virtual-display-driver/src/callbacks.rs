@@ -150,14 +150,22 @@ pub extern "C-unwind" fn parse_monitor_description(
         };
     }
 
-    let monitor_modes = unsafe {
-        std::slice::from_raw_parts_mut(
-            in_args
-                .pMonitorModes
-                .cast::<MaybeUninit<IDDCX_MONITOR_MODE>>(),
-            number_of_modes as usize,
-        )
-    };
+    // from_raw_parts_mut requires a non-null, aligned pointer even when len == 0; a MODELESS
+    // monitor (number_of_modes == 0) is handed a null buffer here, which trips the debug-build
+    // unsafe-precondition check and aborts the driver host. Guard it. [VizLab]
+    let monitor_modes: &mut [MaybeUninit<IDDCX_MONITOR_MODE>] =
+        if number_of_modes == 0 || in_args.pMonitorModes.is_null() {
+            &mut []
+        } else {
+            unsafe {
+                std::slice::from_raw_parts_mut(
+                    in_args
+                        .pMonitorModes
+                        .cast::<MaybeUninit<IDDCX_MONITOR_MODE>>(),
+                    number_of_modes as usize,
+                )
+            }
+        };
 
     for (mode, out_mode) in monitor.data.modes.flatten().zip(monitor_modes.iter_mut()) {
         out_mode.write(IDDCX_MONITOR_MODE {
@@ -261,14 +269,20 @@ pub extern "C-unwind" fn monitor_query_modes(
     let in_args = unsafe { &*p_in_args };
 
     if in_args.TargetModeBufferInputCount >= number_of_modes {
-        let out_target_modes = unsafe {
-            std::slice::from_raw_parts_mut(
-                in_args
-                    .pTargetModes
-                    .cast::<MaybeUninit<IDDCX_TARGET_MODE>>(),
-                number_of_modes as usize,
-            )
-        };
+        // Guard the modeless case: from_raw_parts_mut rejects a null ptr even at len 0. [VizLab]
+        let out_target_modes: &mut [MaybeUninit<IDDCX_TARGET_MODE>] =
+            if number_of_modes == 0 || in_args.pTargetModes.is_null() {
+                &mut []
+            } else {
+                unsafe {
+                    std::slice::from_raw_parts_mut(
+                        in_args
+                            .pTargetModes
+                            .cast::<MaybeUninit<IDDCX_TARGET_MODE>>(),
+                        number_of_modes as usize,
+                    )
+                }
+            };
 
         for (mode, out_target) in monitor
             .data

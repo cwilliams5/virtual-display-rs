@@ -42,7 +42,10 @@ extern "C-unwind" fn DriverEntry(
 
         if cfg!(debug_assertions) {
             logger.debug();
-        } else if logger.name("VirtualDisplayDriver").is_err() {
+        }
+        // Also register the event-log sink. Required in release; best-effort in debug so panics
+        // (logged by the panic hook) are readable in the System event log. [VizLab tap-debug]
+        if logger.name("VirtualDisplayDriver").is_err() && !cfg!(debug_assertions) {
             return NTSTATUS::STATUS_UNSUCCESSFUL;
         }
 

@@ -75,6 +75,7 @@ pub struct FrameTap {
     sh: u32,
     sfmt: DXGI_FORMAT,
     logged_first: bool,
+    disabled: bool,
 }
 
 impl FrameTap {
@@ -158,12 +159,28 @@ impl FrameTap {
             sh: 0,
             sfmt: DXGI_FORMAT(0),
             logged_first: false,
+            disabled: false,
         })
     }
 
     /// Copy one composited frame (the IddCx-acquired surface) into the shmem triple-buffer.
     /// Never panics; any failure skips this frame. `surface_raw` is `IDDCX_METADATA.pSurface`.
     pub fn publish(&mut self, device: &ID3D11Device, surface_raw: *mut c_void) {
+        if self.disabled {
+            return;
+        }
+        // Purely additive: a panic in the per-frame path must NEVER take down the driver host.
+        // catch_unwind contains it (when the build unwinds); on the first panic, log + disable.
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.publish_inner(device, surface_raw);
+        }));
+        if r.is_err() {
+            self.disabled = true;
+            error!("frame_tap: publish panicked -> tap DISABLED; driver continues as a plain virtual display");
+        }
+    }
+
+    fn publish_inner(&mut self, device: &ID3D11Device, surface_raw: *mut c_void) {
         if surface_raw.is_null() {
             return;
         }
