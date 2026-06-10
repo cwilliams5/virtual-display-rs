@@ -5,6 +5,7 @@ mod context;
 mod direct_3d_device;
 mod edid;
 mod entry;
+mod frame_tap;
 mod ipc;
 mod panic;
 mod swap_chain_processor;

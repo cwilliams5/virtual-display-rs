@@ -104,6 +104,14 @@ impl SwapChainProcessor {
             return;
         }
 
+        // VizLab driver-tap: publish each composited frame to Global\VizLabFrame
+        // (docs/virtual-display.md "Building the driver-tap"). Purely additive — on init
+        // failure the driver still works as a plain virtual display.
+        let mut tap = crate::frame_tap::FrameTap::new(&device.device);
+        if tap.is_none() {
+            error!("frame_tap: disabled (init failed); continuing as a plain virtual display");
+        }
+
         loop {
             let mut buffer = IDARG_OUT_RELEASEANDACQUIREBUFFER::default();
             let hr: NTSTATUS =
@@ -132,6 +140,9 @@ impl SwapChainProcessor {
             } else if hr.is_success() {
                 // This is the most performance-critical section of code in an IddCx driver. It's important that whatever
                 // is done with the acquired surface be finished as quickly as possible.
+                if let Some(t) = tap.as_mut() {
+                    t.publish(&device.device, buffer.MetaData.pSurface.cast());
+                }
                 let hr = unsafe { IddCxSwapChainFinishedProcessingFrame(swap_chain) };
 
                 if hr.is_err() {
