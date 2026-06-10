@@ -1,3 +1,13 @@
+> ## 🔱 Fork note (cwilliams5)
+>
+> This is a fork of **[MolotovCherry/virtual-display-rs](https://github.com/MolotovCherry/virtual-display-rs)** that adds a **frame-tap**: the driver publishes every composited frame of its virtual monitor straight into a `Global\VizLabFrame` shared-memory framebuffer (`rust/virtual-display-driver/src/frame_tap.rs`), so an external process can read the monitor's pixels with **zero re-capture** — no DXGI Desktop Duplication, no on-screen window, no compositor re-grab.
+>
+> It exists for the **VizLab / Resonance** project — capturing legacy Winamp visualizers (Milkdrop, AVS, Geiss, …) rendered on a *hidden* virtual monitor and feeding them into the app's canvas. The tap is the ceiling of that capture path.
+>
+> **What changed vs upstream** (3 commits): the tap itself (`frame_tap.rs` + one `publish` call in `swap_chain_processor.rs::run_core`), a single-tap-per-driver-host guard, and a fix for a **debug-build** abort when a monitor has zero modes (`slice::from_raw_parts_mut(null, 0)` in the IddCx mode callbacks — harmless UB in release, which is why upstream never hit it). The driver itself is entirely MolotovCherry's work; this fork stays **MIT**. The upstream README follows, unchanged.
+>
+> ---
+
 # Virtual Display Driver
 
 [![Build](https://github.com/MolotovCherry/virtual-display-rs/actions/workflows/build.yml/badge.svg?branch=master&event=push)](https://github.com/MolotovCherry/virtual-display-rs/actions/workflows/build.yml) [![GitHub release (with filter)](https://img.shields.io/github/v/release/MolotovCherry/virtual-display-rs)](https://github.com/MolotovCherry/virtual-display-rs/releases)
